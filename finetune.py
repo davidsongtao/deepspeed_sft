@@ -23,14 +23,19 @@ from transformers.trainer_pt_utils import LabelSmoother
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 # 导入Accelerate库的DistributedType类，用于分布式训练
 from accelerate.utils import DistributedType
+import torchvision
+
+torchvision.disable_beta_transforms_warning()
 
 # 定义一个常量IGNORE_TOKEN_ID，用于表示忽略的标签ID
 IGNORE_TOKEN_ID = LabelSmoother.ignore_index
+
 
 # 使用dataclass装饰器定义ModelArguments类，用于存储模型参数
 @dataclass
 class ModelArguments:
     model_name_or_path: Optional[str] = field(default="Qwen/Qwen-7B")
+
 
 # 使用dataclass装饰器定义DataArguments类，用于存储数据参数
 @dataclass
@@ -62,6 +67,7 @@ class TrainingArguments(transformers.TrainingArguments):
     )
     use_lora: bool = False  # 是否使用LoRA进行微调，默认为False
 
+
 # 使用dataclass装饰器定义LoraArguments类，用于存储LoRA参数
 @dataclass
 class LoraArguments:
@@ -76,6 +82,24 @@ class LoraArguments:
     lora_bias: str = "none"  # LoRA的bias类型，默认为"none"
     q_lora: bool = False  # 是否使用QLoRA，默认为False
 
+
+def is_zero3_enabled():
+    """检查是否启用了ZeRO-3优化"""
+    if not hasattr(deepspeed, "DeepSpeedZeroOptimizer"):
+        return False
+
+    # 尝试从环境变量或配置文件中获取ZeRO阶段
+    zero_stage = int(os.environ.get("ZERO_STAGE", "0"))
+    if "deepspeed_config" in os.environ:
+        import json
+        with open(os.environ["deepspeed_config"], "r") as f:
+            config = json.load(f)
+            if "zero_optimization" in config and "stage" in config["zero_optimization"]:
+                zero_stage = config["zero_optimization"]["stage"]
+
+    return zero_stage == 3
+
+
 # 定义maybe_zero_3函数，用于处理DeepSpeed ZeRO-3优化器中的参数,确保参数可以从GPU复制到CPU并克隆。
 def maybe_zero_3(param):
     if hasattr(param, "ds_id"):  # 检查参数是否有ds_id属性
@@ -85,6 +109,7 @@ def maybe_zero_3(param):
     else:
         param = param.detach().cpu().clone()  # 如果没有ds_id属性，直接将参数从GPU复制到CPU并克隆
     return param  # 返回处理后的参数
+
 
 # Borrowed from peft.utils.get_peft_model_state_dict
 def get_peft_state_maybe_zero_3(named_params, bias):
@@ -130,7 +155,7 @@ def rank0_print(*args):
 def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: str, bias="none"):
     """Collects the state dict and dump to disk."""
     # 检查是否启用了DeepSpeed ZeRO-3模式
-    if deepspeed.is_deepspeed_zero3_enabled():
+    if is_zero3_enabled():
         # 如果启用，使用_zero3_consolidated_16bit_state_dict方法收集状态字典
         state_dict = trainer.model_wrapped._zero3_consolidated_16bit_state_dict()
     else:
@@ -292,8 +317,6 @@ class LazySupervisedDataset(Dataset):
 def make_supervised_data_module(
         tokenizer: transformers.PreTrainedTokenizer, data_args, max_len,
 ) -> Dict:
-
-
     # 根据是否懒加载预处理数据来选择数据集类
     dataset_cls = (
         LazySupervisedDataset if data_args.lazy_preprocess else SupervisedDataset
@@ -342,7 +365,7 @@ def train():
     if lora_args.q_lora:  # 如果启用了 QLoRA（量化 LoRA）
         # 设置设备映射，如果是 DDP 模式则根据 LOCAL_RANK 设置设备，否则自动分配
         device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)} if ddp else "auto"
-        if len(training_args.fsdp) > 0 or deepspeed.is_deepspeed_zero3_enabled():  # 如果启用了 FSDP 或者 ZeRO3
+        if len(training_args.fsdp) > 0 or is_zero3_enabled():  # 如果启用了 FSDP 或者 ZeRO3
             logging.warning("FSDP or ZeRO3 are incompatible with QLoRA.")  # 警告用户 FSDP 或 ZeRO3 与 QLoRA 不兼容
 
     is_chat_model = 'chat' in model_args.model_name_or_path.lower()  # 判断是否为聊天模型
@@ -351,13 +374,13 @@ def train():
     if (
             training_args.use_lora
             and not lora_args.q_lora
-            and deepspeed.is_deepspeed_zero3_enabled()
+            and is_zero3_enabled()
             and not is_chat_model
     ):
         raise RuntimeError("ZeRO3 is incompatible with LoRA when finetuning on base model.")
 
     model_load_kwargs = {  # 设置模型加载时的关键字参数
-        'low_cpu_mem_usage': not deepspeed.is_deepspeed_zero3_enabled(),  # 如果没有启用 ZeRO3，则降低 CPU 内存使用
+        'low_cpu_mem_usage': not is_zero3_enabled(),  # 如果没有启用 ZeRO3，则降低 CPU 内存使用
     }
 
     # 加载模型配置
