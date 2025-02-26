@@ -83,7 +83,7 @@ def process_json_file(input_file_path, output_file_path):
 
 
 if __name__ == "__main__":
-    input_file = "/root/autodl-tmp/data/sop_cla_datasets/mixed_train_dataset.jsonl"  # 替换为你的输入文件路径
-    output_file = "/root/autodl-tmp/data/datasets/output.json"  # 替换为你希望的输出文件路径
+    input_file = "/root/autodl-tmp/data/sop_cla_datasets/mixed_dev_dataset.jsonl"  # 替换为你的输入文件路径
+    output_file = "/root/autodl-tmp/data/datasets/dev.json"  # 替换为你希望的输出文件路径
 
     process_json_file(input_file, output_file)
