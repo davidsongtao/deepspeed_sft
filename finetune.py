@@ -28,7 +28,6 @@ import warnings
 
 # 禁用transformers的FutureWarning
 warnings.filterwarnings("ignore", category=FutureWarning, module="transformers.training_args")
-torchvision.disable_beta_transforms_warning().warnings.warn(_BETA_TRANSFORMS_WARNING)
 
 # 定义一个常量IGNORE_TOKEN_ID，用于表示忽略的标签ID
 IGNORE_TOKEN_ID = LabelSmoother.ignore_index
@@ -362,10 +361,13 @@ def train():
 
     local_rank = training_args.local_rank  # 获取本地设备的 rank，用于多 GPU 分布式训练
 
+    # 判断是否使用ZeRO-3
+    zero3_enabled = is_zero3_enabled()
+
     device_map = None  # 初始化设备映射，用于指定模型加载到哪个设备上
     world_size = int(os.environ.get("WORLD_SIZE", 1))  # 获取世界大小，即参与训练的 GPU 总数
     ddp = world_size != 1  # 判断是否使用分布式数据并行（DDP）
-    if lora_args.q_lora:  # 如果启用了 QLoRA（量化 LoRA）
+    if lora_args.q_lora and not zero3_enabled:  # 如果启用了 QLoRA（量化 LoRA）
         # 设置设备映射，如果是 DDP 模式则根据 LOCAL_RANK 设置设备，否则自动分配
         device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)} if ddp else "auto"
         if len(training_args.fsdp) > 0 or is_zero3_enabled():  # 如果启用了 FSDP 或者 ZeRO3
@@ -382,9 +384,12 @@ def train():
     ):
         raise RuntimeError("ZeRO3 is incompatible with LoRA when finetuning on base model.")
 
-    model_load_kwargs = {  # 设置模型加载时的关键字参数
-        'low_cpu_mem_usage': not is_zero3_enabled(),  # 如果没有启用 ZeRO3，则降低 CPU 内存使用
-    }
+    if zero3_enabled:
+        model_load_kwargs = {}
+    else:
+        model_load_kwargs = {  # 设置模型加载时的关键字参数
+            'low_cpu_mem_usage': not is_zero3_enabled(),  # 如果没有启用 ZeRO3，则降低 CPU 内存使用
+        }
 
     # 加载模型配置
     config = transformers.AutoConfig.from_pretrained(
