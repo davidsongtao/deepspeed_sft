@@ -181,13 +181,86 @@ def preprocess(
         tokenizer: transformers.PreTrainedTokenizer,  # 使用的分词器
         max_len: int,  # 输入的最大长度
         system_message: str = "You are a helpful assistant."  # 系统消息的默认文本
-) -> Dict:  # 返回一个字典，包含输入ID、标签和注意力掩码
+) -> Dict:
+    # 检测tokenizer类型
+    is_llama_tokenizer = isinstance(tokenizer, transformers.LlamaTokenizer) or isinstance(tokenizer, transformers.LlamaTokenizerFast)
+
+    if is_llama_tokenizer:
+        # LLaMA格式的预处理
+        return preprocess_llama(sources, tokenizer, max_len, system_message)
+    else:
+        # Qwen格式的预处理
+        return preprocess_qwen(sources, tokenizer, max_len, system_message)
+
+
+def preprocess_llama(sources, tokenizer, max_len, system_message):
+    """针对LLaMA架构模型的预处理"""
+    conv_templates = {"user": "USER: ", "assistant": "ASSISTANT: "}
+
+    # 初始化输入ID和目标ID列表
+    input_ids, targets = [], []
+
+    # 处理每个对话
+    for source in sources:
+        # 构建对话文本
+        full_text = f"SYSTEM: {system_message}\n"
+        target_mask = [IGNORE_TOKEN_ID] * len(tokenizer(full_text).input_ids)
+
+        for message in source:
+            role = message["from"]
+            content = message["value"]
+
+            if role == "user":
+                full_text += f"{conv_templates[role]}{content}\n"
+                target_mask.extend([IGNORE_TOKEN_ID] * len(tokenizer(f"{conv_templates[role]}{content}\n").input_ids))
+            elif role == "assistant":
+                full_text += f"{conv_templates[role]}{content}\n"
+                # 助手回复是需要预测的部分
+                assistant_tokens = tokenizer(f"{conv_templates[role]}{content}\n").input_ids
+                target_mask.extend(assistant_tokens)
+
+        # 编码完整文本
+        encoded = tokenizer(full_text, truncation=True, max_length=max_len)
+        input_id = encoded.input_ids
+
+        # 填充到最大长度
+        padding_size = max_len - len(input_id)
+        input_id.extend([tokenizer.pad_token_id] * padding_size)
+
+        # 创建目标，对于用户输入部分设为忽略，对于助手部分保持原样
+        if len(target_mask) > max_len:
+            target_mask = target_mask[:max_len]
+        else:
+            target_mask.extend([IGNORE_TOKEN_ID] * (max_len - len(target_mask)))
+
+        input_ids.append(input_id[:max_len])
+        targets.append(target_mask[:max_len])
+
+    # 转换为张量
+    input_ids = torch.tensor(input_ids, dtype=torch.int)
+    targets = torch.tensor(targets, dtype=torch.int)
+
+    return dict(
+        input_ids=input_ids,
+        labels=targets,
+        attention_mask=input_ids.ne(tokenizer.pad_token_id),
+    )
+
+
+def preprocess_qwen(sources, tokenizer, max_len, system_message):
+    """原来为Qwen设计的预处理函数"""
+    # 你原来的preprocess代码，但要添加对特殊token的检查
     # 定义不同角色的前缀
     roles = {"user": "<|im_start|>user", "assistant": "<|im_start|>assistant"}
 
-    # 获取特殊标记的ID
-    im_start = tokenizer.im_start_id
-    im_end = tokenizer.im_end_id
+    # 确保tokenizer有需要的特殊标记ID
+    if not hasattr(tokenizer, 'im_start_id') or not hasattr(tokenizer, 'im_end_id'):
+        # 对于没有im_start_id和im_end_id的tokenizer，创建默认值
+        im_start = tokenizer.convert_tokens_to_ids("<|im_start|>") if "<|im_start|>" in tokenizer.get_vocab() else tokenizer.eos_token_id
+        im_end = tokenizer.convert_tokens_to_ids("<|im_end|>") if "<|im_end|>" in tokenizer.get_vocab() else tokenizer.eos_token_id
+    else:
+        im_start = tokenizer.im_start_id
+        im_end = tokenizer.im_end_id
     nl_tokens = tokenizer('\n').input_ids  # 获取换行符的输入ID
 
     # 将系统、用户和助手的标记转换为输入ID
@@ -355,9 +428,18 @@ def train():
         lora_args,  # LoRA 相关的参数
     ) = parser.parse_args_into_dataclasses()  # 解析命令行参数并转换成相应的数据类实例
 
+    is_using_zero3 = False
     # 如果启用了 DeepSpeed 并且是单 GPU 模式，则设置分布式类型为 DeepSpeed
     if getattr(training_args, 'deepspeed', None) and int(os.environ.get("WORLD_SIZE", 1)) == 1:
-        training_args.distributed_state.distributed_type = DistributedType.DEEPSPEED
+        # 尝试读取deepspeed配置文件
+        try:
+            with open(training_args.deepspeed, 'r') as f:
+                ds_config = json.load(f)
+                if ds_config.get('zero_optimization', {}).get('stage', 0) == 3:
+                    is_using_zero3 = True
+                    rank0_print("Detected DeepSpeed ZeRO-3 configuration")
+        except Exception as e:
+            rank0_print(f"Failed to read DeepSpeed config file: {e}")
 
     local_rank = training_args.local_rank  # 获取本地设备的 rank，用于多 GPU 分布式训练
 
@@ -399,18 +481,17 @@ def train():
     )
     config.use_cache = False  # 关闭缓存机制，防止在训练过程中出现内存溢出
 
-    # 根据配置加载预训练模型
+    # 使用最安全的加载方式，没有任何可能导致与DeepSpeed ZeRO-3冲突的参数
+    rank0_print("Loading model with ZeRO-compatible configuration")
     model = transformers.AutoModelForCausalLM.from_pretrained(
-        model_args.model_name_or_path,  # 模型名称或路径
-        config=config,  # 模型配置
-        cache_dir=training_args.cache_dir,  # 缓存目录
-        device_map=device_map,  # 设备映射
-        trust_remote_code=True,  # 是否信任远程代码
-        quantization_config=GPTQConfig(  # 如果启用了 QLoRA，则设置量化配置
-            bits=4,  # 量化的位数
-            disable_exllama=True  # 禁用 exllama 优化
-        ) if training_args.use_lora and lora_args.q_lora else None,  # 如果未启用 QLoRA，则不设置量化配置
-        **model_load_kwargs,  # 其他模型加载参数
+        model_args.model_name_or_path,
+        config=config,
+        cache_dir=training_args.cache_dir,
+        trust_remote_code=True,
+        quantization_config=GPTQConfig(
+            bits=4,
+            disable_exllama=True
+        ) if training_args.use_lora and lora_args.q_lora else None,
     )
 
     # 加载分词器
