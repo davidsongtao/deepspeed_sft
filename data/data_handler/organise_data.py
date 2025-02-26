@@ -23,3 +23,67 @@ Description: 将训练数据转换成DeepSeek R1接受的数据格式
 @Time     ：2025/2/26 下午7:42
 @Contact  ：king.songtao@gmail.com
 """
+import json
+import re
+
+
+def process_json_file(input_file_path, output_file_path):
+    """
+    读取JSON文件并转换为指定格式
+
+    参数:
+    input_file_path (str): 输入JSON文件路径
+    output_file_path (str): 输出JSON文件路径
+    """
+    # 读取输入文件
+    input_data = []
+    with open(input_file_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line:  # 跳过空行
+                input_data.append(json.loads(line))
+
+    # 转换数据
+    output_data = []
+    for i, item in enumerate(input_data):
+        context = item.get('context', '')
+        target = item.get('target', '')
+
+        # 提取instruction内容
+        instruction_match = re.search(r'Instruction: (.*?)(?=\nAnswer: )', context, re.DOTALL)
+        instruction = instruction_match.group(1) if instruction_match else ""
+
+        # 清理target内容，移除```json\n和\n```
+        cleaned_target = re.sub(r'```json\n', '', target)
+        cleaned_target = re.sub(r'\n```', '', cleaned_target)
+
+        # 创建新的数据结构
+        converted_item = {
+            "conversations": [
+                {
+                    "from": "user",
+                    "value": instruction
+                },
+                {
+                    "from": "assistant",
+                    "value": cleaned_target
+                }
+            ],
+            "id": f"identity_{i}"
+        }
+
+        output_data.append(converted_item)
+
+    # 写入输出文件，单行格式
+    with open(output_file_path, 'w', encoding='utf-8') as f:
+        json.dump(output_data, f, ensure_ascii=False)
+
+    print(f"转换完成! 共处理了 {len(output_data)} 条数据")
+    print(f"输出文件保存在: {output_file_path}")
+
+
+if __name__ == "__main__":
+    input_file = "/root/autodl-tmp/data/sop_cla_datasets/mixed_train_dataset.jsonl"  # 替换为你的输入文件路径
+    output_file = "/root/autodl-tmp/data/datasets/output.json"  # 替换为你希望的输出文件路径
+
+    process_json_file(input_file, output_file)

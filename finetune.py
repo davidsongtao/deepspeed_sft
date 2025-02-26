@@ -15,7 +15,8 @@ import transformers
 # 导入Transformers库中的Trainer类，用于训练模型
 from transformers import Trainer
 # 导入Transformers库中的GPTQConfig类，用于配置量化设置
-from transformers import GPTQConfig, deepspeed
+from transformers import GPTQConfig
+import deepspeed
 # 导入Transformers库中的LabelSmoother类，用于平滑标签
 from transformers.trainer_pt_utils import LabelSmoother
 # 导入PEFT库，用于低秩适应（LoRA）技术
@@ -64,9 +65,9 @@ class TrainingArguments(transformers.TrainingArguments):
 # 使用dataclass装饰器定义LoraArguments类，用于存储LoRA参数
 @dataclass
 class LoraArguments:
-    lora_r: int = 64  # LoRA秩，默认为64
-    lora_alpha: int = 16  # LoRA学习率缩放因子，默认为16
-    lora_dropout: float = 0.05  # LoRA层的dropout概率，默认为0.05
+    lora_r: int = 16  # LoRA秩，默认为64
+    lora_alpha: int = 32  # LoRA学习率缩放因子，默认为16
+    lora_dropout: float = 0.01  # LoRA层的dropout概率，默认为0.05
     lora_target_modules: List[str] = field(
         default_factory=lambda: ["c_attn", "c_proj", "w1", "w2"],  # 应用LoRA的目标模块名称，默认为["c_attn", "c_proj", "w1", "w2"]
         metadata={"help": "Names of the modules to apply LoRA to."}  # 参数说明
