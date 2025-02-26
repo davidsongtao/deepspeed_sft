@@ -24,8 +24,11 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 # 导入Accelerate库的DistributedType类，用于分布式训练
 from accelerate.utils import DistributedType
 import torchvision
+import warnings
 
-torchvision.disable_beta_transforms_warning()
+# 禁用transformers的FutureWarning
+warnings.filterwarnings("ignore", category=FutureWarning, module="transformers.training_args")
+torchvision.disable_beta_transforms_warning().warnings.warn(_BETA_TRANSFORMS_WARNING)
 
 # 定义一个常量IGNORE_TOKEN_ID，用于表示忽略的标签ID
 IGNORE_TOKEN_ID = LabelSmoother.ignore_index
@@ -71,12 +74,12 @@ class TrainingArguments(transformers.TrainingArguments):
 # 使用dataclass装饰器定义LoraArguments类，用于存储LoRA参数
 @dataclass
 class LoraArguments:
-    lora_r: int = 16  # LoRA秩，默认为64
-    lora_alpha: int = 32  # LoRA学习率缩放因子，默认为16
-    lora_dropout: float = 0.01  # LoRA层的dropout概率，默认为0.05
+    lora_r: int = 8  # LoRA秩，默认为64
+    lora_alpha: int = 16  # LoRA学习率缩放因子，默认为16
+    lora_dropout: float = 0.005  # LoRA层的dropout概率，默认为0.05
     lora_target_modules: List[str] = field(
-        default_factory=lambda: ["c_attn", "c_proj", "w1", "w2"],  # 应用LoRA的目标模块名称，默认为["c_attn", "c_proj", "w1", "w2"]
-        metadata={"help": "Names of the modules to apply LoRA to."}  # 参数说明
+        default_factory=lambda: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        metadata={"help": "Names of the modules to apply LoRA to."}
     )
     lora_weight_path: str = ""  # LoRA权重路径，默认为空字符串
     lora_bias: str = "none"  # LoRA的bias类型，默认为"none"
@@ -414,7 +417,15 @@ def train():
         use_fast=False,  # 是否使用快速版本的分词器
         trust_remote_code=True,  # 是否信任远程代码
     )
-    tokenizer.pad_token_id = tokenizer.eod_id  # 设置填充标记为结束标记
+    # tokenizer.pad_token_id = tokenizer.eod_id  # 设置填充标记为结束标记
+
+    # 根据不同模型架构设置pad_token_id
+    if hasattr(tokenizer, 'eod_id'):
+        tokenizer.pad_token_id = tokenizer.eod_id
+    elif hasattr(tokenizer, 'eos_token_id'):
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+    else:
+        tokenizer.pad_token_id = 0  # 设置一个默认值
 
     if training_args.use_lora:  # 如果启用了 LoRA
         if lora_args.q_lora or is_chat_model:  # 如果启用了 QLoRA 或者是聊天模型
