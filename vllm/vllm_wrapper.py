@@ -264,7 +264,7 @@ class vLLMWrapper:
         # 生成回复
         req_outputs = self.model.generate([query],
                                             sampling_params=sampling_params,
-                                            prompt_token_ids=[context_tokens])
+                                            prompt_token_ids=[context_tokens],)
         req_output = req_outputs[0]
 
         prompt_str = req_output.prompt
@@ -289,8 +289,8 @@ class vLLMWrapper:
 if __name__ == '__main__':
     # 主程序入口
 
-    model_dir = 'Qwen/Qwen-72B-Chat'  # 指定模型目录路径
-    tensor_parallel_size = 2  # 设置张量并行度
+    model_dir = '/root/autodl-fs/DeepSeek-R1-Distill-Qwen-7B'  # 指定模型目录路径
+    tensor_parallel_size = 4  # 设置张量并行度
 
     # 初始化vLLMWrapper模型
     model = vLLMWrapper(model_dir,
