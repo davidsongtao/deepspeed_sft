@@ -94,9 +94,9 @@ if __name__ == "__main__":
     # 创建命令行参数解析器
     parser = argparse.ArgumentParser("Model Quantization using AutoGPTQ")
     # 添加命令行参数
-    parser.add_argument("--model_name_or_path", type=str, help="model path")
-    parser.add_argument("--data_path", type=str, help="calibration data path")
-    parser.add_argument("--out_path", type=str, help="output path of the quantized model")
+    parser.add_argument("--model_name_or_path", type=str, help="model path", default="")
+    parser.add_argument("--data_path", type=str, help="calibration data path", default="")
+    parser.add_argument("--out_path", type=str, help="output path of the quantized model", default="")
     parser.add_argument("--max_len", type=int, default=8192, help="max length of calibration data")
     parser.add_argument("--bits", type=int, default=4, help="the bits of quantized model. 4 indicates int4 models.")
     parser.add_argument("--group-size", type=int, default=128, help="the group size of quantized model")

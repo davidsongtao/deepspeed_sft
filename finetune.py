@@ -73,9 +73,9 @@ class TrainingArguments(transformers.TrainingArguments):
 # 使用dataclass装饰器定义LoraArguments类，用于存储LoRA参数
 @dataclass
 class LoraArguments:
-    lora_r: int = 8  # LoRA秩，默认为64
+    lora_r: int = 32  # LoRA秩，默认为64
     lora_alpha: int = 16  # LoRA学习率缩放因子，默认为16
-    lora_dropout: float = 0.005  # LoRA层的dropout概率，默认为0.05
+    lora_dropout: float = 0.05  # LoRA层的dropout概率，默认为0.05
     lora_target_modules: List[str] = field(
         default_factory=lambda: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
         metadata={"help": "Names of the modules to apply LoRA to."}

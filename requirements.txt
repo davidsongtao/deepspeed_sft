@@ -7,3 +7,5 @@ transformers_stream_generator==0.0.4
 peft
 deepspeed
 safetensors==0.4.5
+auto-gptq
+optimum
