@@ -8,14 +8,16 @@ import transformers
 from transformers import AutoTokenizer
 from transformers.trainer_pt_utils import LabelSmoother
 from auto_gptq import AutoGPTQForCausalLM, BaseQuantizeConfig
+
 # 定义一个常量 IGNORE_TOKEN_ID，用于在目标序列中表示忽略的标记
 IGNORE_TOKEN_ID = LabelSmoother.ignore_index
 
+
 def preprocess(
-    sources, # 原始对话数据列表
-    tokenizer: transformers.PreTrainedTokenizer,# 使用的分词器
-    max_len: int,# 输入的最大长度
-    system_message: str = "You are a helpful assistant."
+        sources,  # 原始对话数据列表
+        tokenizer: transformers.PreTrainedTokenizer,  # 使用的分词器
+        max_len: int,  # 输入的最大长度
+        system_message: str = "You are a helpful assistant."
 ) -> Dict:
     """
     预处理对话数据，将其转换为模型可以理解的格式。
@@ -58,7 +60,7 @@ def preprocess(
         # 构建系统消息的输入ID和目标ID
         system = [im_start] + _system + tokenizer(system_message).input_ids + [im_end] + nl_tokens
         input_id += system
-        target += [im_start] + [IGNORE_TOKEN_ID] * (len(system)-3) + [im_end] + nl_tokens
+        target += [im_start] + [IGNORE_TOKEN_ID] * (len(system) - 3) + [im_end] + nl_tokens
         # 确保输入ID和目标ID的长度相同
         assert len(input_id) == len(target)
         # 遍历对话中的每个句子
@@ -66,14 +68,14 @@ def preprocess(
             role = roles[sentence["from"]]
             # 构建当前句子的输入ID
             _input_id = tokenizer(role).input_ids + nl_tokens + \
-                tokenizer(sentence["value"]).input_ids + [im_end] + nl_tokens
+                        tokenizer(sentence["value"]).input_ids + [im_end] + nl_tokens
             input_id += _input_id
             # 根据角色构建目标ID
             if role == '<|im_start|>user':
-                _target = [im_start] + [IGNORE_TOKEN_ID] * (len(_input_id)-3) + [im_end] + nl_tokens
+                _target = [im_start] + [IGNORE_TOKEN_ID] * (len(_input_id) - 3) + [im_end] + nl_tokens
             elif role == '<|im_start|>assistant':
                 _target = [im_start] + [IGNORE_TOKEN_ID] * len(tokenizer(role).input_ids) + \
-                    _input_id[len(tokenizer(role).input_ids)+1:-2] + [im_end] + nl_tokens
+                          _input_id[len(tokenizer(role).input_ids) + 1:-2] + [im_end] + nl_tokens
             else:
                 raise NotImplementedError
             target += _target
@@ -94,9 +96,9 @@ if __name__ == "__main__":
     # 创建命令行参数解析器
     parser = argparse.ArgumentParser("Model Quantization using AutoGPTQ")
     # 添加命令行参数
-    parser.add_argument("--model_name_or_path", type=str, help="model path", default="/root/autodl-fs/trained_models/deepseek_ri_32b_merged")
-    parser.add_argument("--data_path", type=str, help="calibration data path", default="")
-    parser.add_argument("--out_path", type=str, help="output path of the quantized model", default="")
+    parser.add_argument("--model_name_or_path", type=str, help="model path")
+    parser.add_argument("--data_path", type=str, help="calibration data path")
+    parser.add_argument("--out_path", type=str, help="output path of the quantized model")
     parser.add_argument("--max_len", type=int, default=8192, help="max length of calibration data")
     parser.add_argument("--bits", type=int, default=4, help="the bits of quantized model. 4 indicates int4 models.")
     parser.add_argument("--group-size", type=int, default=128, help="the group size of quantized model")
@@ -106,12 +108,12 @@ if __name__ == "__main__":
     # 创建量化配置
     quantize_config = BaseQuantizeConfig(
         bits=args.bits,
-        group_size=args.group_size,# 指定量化时使用的组大小。组量化是一种技术，它将模型中的多个权重组合在一起进行量化，以减少模型大小并提高计算效率
-        damp_percent=0.01, #用于在量化过程中控制权重的调整程度。较高的值可以减少量化带来的影响
+        group_size=args.group_size,  # 指定量化时使用的组大小。组量化是一种技术，它将模型中的多个权重组合在一起进行量化，以减少模型大小并提高计算效率
+        damp_percent=0.01,  # 用于在量化过程中控制权重的调整程度。较高的值可以减少量化带来的影响
         desc_act=False,  # 设置为 False 可以显著加快推理速度，但困惑度可能会略有下降
-        static_groups=False, # 是否在量化过程中使用静态量化。如果设置为 True，则在量化过程中组不会被动态调整
-        sym=True, # 对称性。控制量化是否是对称的，可以减少量化误差
-        true_sequential=True, # 控制量化过程中是否考虑权重的顺序。如果设置为 True，则量化过程会考虑权重的顺序，这可能会提高量化后的模型精度
+        static_groups=False,  # 是否在量化过程中使用静态量化。如果设置为 True，则在量化过程中组不会被动态调整
+        sym=True,  # 对称性。控制量化是否是对称的，可以减少量化误差
+        true_sequential=True,  # 控制量化过程中是否考虑权重的顺序。如果设置为 True，则量化过程会考虑权重的顺序，这可能会提高量化后的模型精度
         model_name_or_path=None,
         model_file_base_name="model"
     )
