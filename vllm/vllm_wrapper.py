@@ -154,6 +154,7 @@ class vLLMWrapper:
                  tensor_parallel_size: int = 1,
                  gpu_memory_utilization: float = 0.98,
                  dtype: str = "bfloat16",
+                 max_model_len: int = None,
                  **kwargs):
         """初始化vLLM包装器"""
 
@@ -210,7 +211,9 @@ class vLLMWrapper:
                          trust_remote_code=trust_remote_code,
                          quantization=quantization,
                          gpu_memory_utilization=gpu_memory_utilization,
-                         dtype=dtype)
+                         dtype=dtype,
+                         max_model_len=max_model_len,
+                         )
 
         # 获取停止词的token ID并添加到停止词列表中
         try:

@@ -11,14 +11,10 @@ import sys
 import time
 import traceback
 
-# 根据您的vLLMWrapper文件位置调整导入路径
 try:
-    from vllm_wrapper import vLLMWrapper  # 如果在同一目录下
+    from vllm.vllm_wrapper import vLLMWrapper
 except ImportError:
-    try:
-        from vllm.vllm_wrapper import vLLMWrapper  # 如果在vllm包下
-    except ImportError:
-        from autodl_tmp.vllm.vllm_wrapper import vLLMWrapper  # 根据实际路径调整
+    from vllm_wrapper import vLLMWrapper
 
 
 def main():
@@ -27,14 +23,19 @@ def main():
 
     # 模型路径
     model = "/root/autodl-fs/trained_models/deepseek_ri_32b_merged"
+
+    # 关键参数调整
     tensor_parallel_size = 2  # 设置张量并行度
+    gpu_memory_utilization = 0.98  # 提高GPU内存使用率
+    max_model_len = 32768  # 减小最大序列长度
 
     try:
-        # 初始化模型
+        # 初始化模型，添加关键参数
         vllm_model = vLLMWrapper(
             model,
             tensor_parallel_size=tensor_parallel_size,
-            gpu_memory_utilization=0.95  # 可调整GPU内存利用率
+            gpu_memory_utilization=gpu_memory_utilization,
+            max_model_len=max_model_len  # 添加这个参数来解决KV缓存问题
         )
 
         print(f"模型加载完成，耗时 {time.time() - start_time:.2f} 秒")
@@ -79,8 +80,8 @@ def main():
                 print(f"[生成时间: {time.time() - gen_start:.2f}秒]")
 
                 # 限制历史长度，防止上下文过长
-                if history and len(history) > 20:  # 保留最近20轮对话
-                    history = history[-20:]
+                if history and len(history) > 10:  # 保留最近10轮对话，防止上下文过长
+                    history = history[-10:]
 
             except KeyboardInterrupt:
                 print("\n\n程序被用户中断")

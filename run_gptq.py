@@ -94,7 +94,7 @@ if __name__ == "__main__":
     # 创建命令行参数解析器
     parser = argparse.ArgumentParser("Model Quantization using AutoGPTQ")
     # 添加命令行参数
-    parser.add_argument("--model_name_or_path", type=str, help="model path", default="")
+    parser.add_argument("--model_name_or_path", type=str, help="model path", default="/root/autodl-fs/trained_models/deepseek_ri_32b_merged")
     parser.add_argument("--data_path", type=str, help="calibration data path", default="")
     parser.add_argument("--out_path", type=str, help="output path of the quantized model", default="")
     parser.add_argument("--max_len", type=int, default=8192, help="max length of calibration data")
